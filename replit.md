@@ -1,6 +1,6 @@
-# [Project name]
+# مخزون نمري
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+تطبيق عربي لإدارة مستودعات شركة نمري للمقاولات، ومتابعة المواد والأرصدة والحركات والمشاريع والتقارير.
 
 ## Run & Operate
 
@@ -22,15 +22,21 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/namri-inventory` — responsive Arabic RTL web application
+- `artifacts/api-server` — Express API and Clerk session authentication
+- `lib/api-spec/openapi.yaml` — API source contract; regenerate clients with the command above
+- `lib/db/src/schema/namri-inventory.ts` — PostgreSQL schema for warehouses, stock, projects, users, and movements
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Clerk handles sign-in; application roles are stored and enforced server-side in PostgreSQL.
+- The first signed-in account becomes the initial administrator. Later sign-ups are read-only until an administrator assigns a role.
+- Stock quantities change only through receipts, issues, or physical-count adjustments; every change is recorded in the movement ledger.
+- Only the two required warehouse records are initialized automatically; real item quantities and projects are not fabricated.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+The app provides warehouse-level stock balances, low-stock alerts, project-linked issues, receipt records, stock counts, movement history, dashboard analytics, and export-ready reports.
 
 ## User preferences
 
@@ -38,7 +44,8 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Run `pnpm --filter @workspace/api-spec run codegen` after every OpenAPI contract change.
+- Use the managed artifact workflows for the web app and API server; do not start duplicate dev workflows.
 
 ## Pointers
 

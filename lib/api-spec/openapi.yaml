@@ -3,13 +3,25 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: API for Namri construction warehouse and inventory management
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: dashboard
+    description: Dashboard summaries and analytics
+  - name: warehouses
+    description: Warehouse locations
+  - name: items
+    description: Materials and inventory balances
+  - name: projects
+    description: Construction projects
+  - name: movements
+    description: Incoming, outgoing, and count adjustment movements
+  - name: users
+    description: User profiles and application roles
 paths:
   /healthz:
     get:
@@ -24,7 +36,445 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Get inventory dashboard metrics
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /warehouses:
+    get:
+      operationId: listWarehouses
+      tags: [warehouses]
+      summary: List warehouses
+      responses:
+        "200":
+          description: Warehouse list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Warehouse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /items:
+    get:
+      operationId: listItems
+      tags: [items]
+      summary: Search and filter inventory items
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: warehouseId
+          in: query
+          schema:
+            type: integer
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Materials with balances in each warehouse
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createItem
+      tags: [items]
+      summary: Create a material and its initial warehouse balance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItemInput"
+      responses:
+        "201":
+          description: Material created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /items/{id}:
+    patch:
+      operationId: updateItem
+      tags: [items]
+      summary: Update material details and reorder threshold
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItemUpdate"
+      responses:
+        "200":
+          description: Updated material
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List projects
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, completed]
+      responses:
+        "200":
+          description: Project list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectInput"
+      responses:
+        "201":
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /projects/{id}:
+    patch:
+      operationId: updateProject
+      tags: [projects]
+      summary: Update project details or status
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectUpdate"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /movements:
+    get:
+      operationId: listMovements
+      tags: [movements]
+      summary: List and filter stock movements
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [in, out, adjustment]
+        - name: warehouseId
+          in: query
+          schema:
+            type: integer
+        - name: projectId
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        "200":
+          description: Movement list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Movement"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createMovement
+      tags: [movements]
+      summary: Record a stock receipt or issue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MovementInput"
+      responses:
+        "201":
+          description: Movement recorded and balance updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Movement"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Insufficient available stock
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /inventory/counts:
+    post:
+      operationId: recordStockCount
+      tags: [movements]
+      summary: Record a physical count and reconcile stock
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StockCountInput"
+      responses:
+        "201":
+          description: Count recorded and adjustment movement created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Movement"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /reports/inventory:
+    get:
+      operationId: getInventoryReport
+      tags: [items]
+      summary: Get export-ready inventory report
+      parameters:
+        - name: warehouseId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Inventory report rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryReportRow"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /reports/movements:
+    get:
+      operationId: getMovementReport
+      tags: [movements]
+      summary: Get the complete stock movement ledger for export
+      parameters:
+        - name: warehouseId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Complete movement report
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Movement"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /backup/export:
+    get:
+      operationId: getBackupExport
+      tags: [backup]
+      summary: Export a complete inventory database snapshot
+      responses:
+        "200":
+          description: JSON backup snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupExport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /users/me:
+    get:
+      operationId: getCurrentUser
+      tags: [users]
+      summary: Get or initialize the authenticated user's application profile
+      responses:
+        "200":
+          description: Current application user and assigned role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List application accounts for role management
+      responses:
+        "200":
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AppUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /users/{id}/role:
+    patch:
+      operationId: updateUserRole
+      tags: [users]
+      summary: Assign an application role
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRoleInput"
+      responses:
+        "200":
+          description: Updated user role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppUser"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
+  securitySchemes:
+    clerkSession:
+      type: apiKey
+      in: cookie
+      name: __session
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+  responses:
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Sign in required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Role does not permit this action
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +483,376 @@ components:
           type: string
       required:
         - status
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    UserRole:
+      type: string
+      enum: [admin, warehouse_manager, viewer]
+    AppUser:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          $ref: "#/components/schemas/UserRole"
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, email, role, createdAt]
+    UserRoleInput:
+      type: object
+      properties:
+        role:
+          $ref: "#/components/schemas/UserRole"
+      required: [role]
+    Warehouse:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        location:
+          type: ["string", "null"]
+        isDefault:
+          type: boolean
+      required: [id, name, location, isDefault]
+    WarehouseStock:
+      type: object
+      properties:
+        warehouseId:
+          type: integer
+        warehouseName:
+          type: string
+        quantity:
+          type: number
+        averageUnitCost:
+          type: number
+        stockValue:
+          type: number
+      required: [warehouseId, warehouseName, quantity, averageUnitCost, stockValue]
+    InventoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        unit:
+          type: string
+        minStock:
+          type: number
+        totalStock:
+          type: number
+        totalValue:
+          type: number
+        warehouseStocks:
+          type: array
+          items:
+            $ref: "#/components/schemas/WarehouseStock"
+      required: [id, code, name, category, unit, minStock, totalStock, totalValue, warehouseStocks]
+    ItemInput:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        category:
+          type: string
+          minLength: 1
+        unit:
+          type: string
+          minLength: 1
+        minStock:
+          type: number
+          minimum: 0
+        warehouseId:
+          type: integer
+        initialStock:
+          type: number
+          minimum: 0
+        initialUnitCost:
+          type: number
+          minimum: 0
+      required: [code, name, category, unit, minStock, warehouseId, initialStock]
+    ItemUpdate:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        category:
+          type: string
+          minLength: 1
+        unit:
+          type: string
+          minLength: 1
+        minStock:
+          type: number
+          minimum: 0
+    Project:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        location:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, completed]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, location, status, createdAt]
+    ProjectInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        location:
+          type: string
+      required: [name]
+    ProjectUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        location:
+          type: string
+        status:
+          type: string
+          enum: [active, completed]
+    Movement:
+      type: object
+      properties:
+        id:
+          type: integer
+        itemId:
+          type: integer
+        itemCode:
+          type: string
+        itemName:
+          type: string
+        warehouseId:
+          type: integer
+        warehouseName:
+          type: string
+        type:
+          type: string
+          enum: [in, out, adjustment]
+        quantity:
+          type: number
+        unitCost:
+          type: number
+        totalValue:
+          type: number
+        supplier:
+          type: ["string", "null"]
+        invoiceNumber:
+          type: ["string", "null"]
+        projectId:
+          type: ["integer", "null"]
+        projectName:
+          type: ["string", "null"]
+        recipient:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        occurredOn:
+          type: string
+          format: date
+        actorName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        [id, itemId, itemCode, itemName, warehouseId, warehouseName, type, quantity, unitCost, totalValue, supplier, invoiceNumber, projectId, projectName, recipient, notes, occurredOn, actorName, createdAt]
+    MovementInput:
+      type: object
+      properties:
+        itemId:
+          type: integer
+        warehouseId:
+          type: integer
+        type:
+          type: string
+          enum: [in, out]
+        quantity:
+          type: number
+          exclusiveMinimum: 0
+        unitCost:
+          type: number
+          minimum: 0
+        supplier:
+          type: string
+        invoiceNumber:
+          type: string
+        projectId:
+          type: integer
+        recipient:
+          type: string
+        notes:
+          type: string
+        occurredOn:
+          type: string
+          format: date
+      required: [itemId, warehouseId, type, quantity, occurredOn]
+    StockCountInput:
+      type: object
+      properties:
+        itemId:
+          type: integer
+        warehouseId:
+          type: integer
+        countedStock:
+          type: number
+          minimum: 0
+        notes:
+          type: string
+        occurredOn:
+          type: string
+          format: date
+      required: [itemId, warehouseId, countedStock, occurredOn]
+    InventoryReportRow:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        unit:
+          type: string
+        warehouseName:
+          type: string
+        quantity:
+          type: number
+        averageUnitCost:
+          type: number
+        stockValue:
+          type: number
+        minStock:
+          type: number
+        lowStock:
+          type: boolean
+      required: [code, name, category, unit, warehouseName, quantity, averageUnitCost, stockValue, minStock, lowStock]
+    BackupExport:
+      type: object
+      properties:
+        schemaVersion:
+          type: integer
+        exportedAt:
+          type: string
+          format: date-time
+        data:
+          type: object
+          properties:
+            warehouses:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            items:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            balances:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            projects:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            users:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            movements:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+          required: [warehouses, items, balances, projects, users, movements]
+      required: [schemaVersion, exportedAt, data]
+    MonthlyMovement:
+      type: object
+      properties:
+        month:
+          type: string
+        inbound:
+          type: number
+        outbound:
+          type: number
+      required: [month, inbound, outbound]
+    WarehouseSummary:
+      type: object
+      properties:
+        warehouseId:
+          type: integer
+        warehouseName:
+          type: string
+        itemCount:
+          type: integer
+        totalUnits:
+          type: number
+      required: [warehouseId, warehouseName, itemCount, totalUnits]
+    Dashboard:
+      type: object
+      properties:
+        totalItems:
+          type: integer
+        monthlyInbound:
+          type: number
+        monthlyOutbound:
+          type: number
+        lowStockCount:
+          type: integer
+        activeProjectCount:
+          type: integer
+        monthlyMovements:
+          type: array
+          items:
+            $ref: "#/components/schemas/MonthlyMovement"
+        warehouseSummaries:
+          type: array
+          items:
+            $ref: "#/components/schemas/WarehouseSummary"
+        lowStockItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryItem"
+        recentMovements:
+          type: array
+          items:
+            $ref: "#/components/schemas/Movement"
+      required: [totalItems, monthlyInbound, monthlyOutbound, lowStockCount, activeProjectCount, monthlyMovements, warehouseSummaries, lowStockItems, recentMovements]
 

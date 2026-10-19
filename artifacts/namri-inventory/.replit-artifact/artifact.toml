@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "مخزون نمري"
+description = "تطبيق ويب عربي لإدارة مستودعات شركة نمري للمقاولات، ومتابعة المخزون والصادر والوارد والمشاريع، مع تقارير وصلاحيات مستخدمين."
+version = "1.0.0"
+id = "artifacts/namri-inventory"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21137
+
+[services.development]
+run = "pnpm --filter @workspace/namri-inventory run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/namri-inventory", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/namri-inventory/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21137"
+BASE_PATH = "/"
