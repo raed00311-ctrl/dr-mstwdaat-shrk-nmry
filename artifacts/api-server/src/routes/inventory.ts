@@ -3,6 +3,8 @@ import { eq } from "drizzle-orm";
 import {
   CreateItemBody,
   CreateItemResponse,
+  CreateWarehouseBody,
+  CreateWarehouseResponse,
   GetInventoryReportQueryParams,
   GetInventoryReportResponse,
   ListItemsQueryParams,
@@ -17,6 +19,7 @@ import {
   inventoryBalancesTable,
   inventoryMovementsTable,
   itemsTable,
+  warehousesTable,
 } from "@workspace/db";
 import { requireRole } from "../middlewares/auth";
 import { getAppUser } from "../lib/app-users";
@@ -34,6 +37,34 @@ router.get("/warehouses", async (_req, res): Promise<void> => {
   res.json(ListWarehousesResponse.parse(warehouses));
 });
 
+router.post(
+  "/warehouses",
+  requireRole("admin"),
+  async (req, res): Promise<void> => {
+    const parsed = CreateWarehouseBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    try {
+      const [warehouse] = await db
+        .insert(warehousesTable)
+        .values({
+          name: parsed.data.name.trim(),
+          location: parsed.data.location.trim(),
+        })
+        .returning();
+      res.status(201).json(CreateWarehouseResponse.parse(warehouse));
+    } catch (error) {
+      if (error instanceof Error && error.message.toLowerCase().includes("unique")) {
+        res.status(409).json({ error: "اسم المستودع مستخدم مسبقًا" });
+        return;
+      }
+      throw error;
+    }
+  },
+);
+
 router.get("/items", async (req, res): Promise<void> => {
   const query = ListItemsQueryParams.safeParse(req.query);
   if (!query.success) {
@@ -46,7 +77,7 @@ router.get("/items", async (req, res): Promise<void> => {
 
 router.post(
   "/items",
-  requireRole("warehouse_manager"),
+  requireRole("admin", "warehouse_manager"),
   async (req, res): Promise<void> => {
     const parsed = CreateItemBody.safeParse(req.body);
     if (!parsed.success) {
@@ -124,7 +155,7 @@ router.post(
 
 router.patch(
   "/items/:id",
-  requireRole("warehouse_manager"),
+  requireRole("admin", "warehouse_manager"),
   async (req, res): Promise<void> => {
     const params = UpdateItemParams.safeParse(req.params);
     if (!params.success) {

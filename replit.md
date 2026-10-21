@@ -30,8 +30,10 @@
 ## Architecture decisions
 
 - Clerk handles sign-in; application roles are stored and enforced server-side in PostgreSQL.
-- The first signed-in account becomes the initial administrator. Later sign-ups are read-only until an administrator assigns a role.
-- Stock quantities change only through receipts, issues, or physical-count adjustments; every change is recorded in the movement ledger.
+- The first signed-in account becomes the initial administrator in each environment. Development and production users and role records are separate.
+- Admins can create warehouses and items, manage roles, download backups, and approve or reject receipt/issue requests; warehouse managers can submit requests and record counts.
+- Receipts and issues remain pending and do not change stock until an admin approves them; physical-count adjustments are recorded directly in the ledger.
+- Inventory value uses each warehouse's weighted average unit cost; unpriced stock is shown as zero until a cost is entered.
 - Only the two required warehouse records are initialized automatically; real item quantities and projects are not fabricated.
 
 ## Product

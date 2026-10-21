@@ -5,6 +5,7 @@
  * API for Namri construction warehouse and inventory management
  * OpenAPI spec version: 0.1.0
  */
+import type { MovementApprovalStatus } from './movementApprovalStatus';
 import type { MovementType } from './movementType';
 
 export interface Movement {
@@ -15,9 +16,16 @@ export interface Movement {
   warehouseId: number;
   warehouseName: string;
   type: MovementType;
+  approvalStatus: MovementApprovalStatus;
   quantity: number;
   unitCost: number;
   totalValue: number;
+  /** @nullable */
+  approvedAt: Date | null;
+  /** @nullable */
+  approverName: string | null;
+  /** @nullable */
+  approvalNotes: string | null;
   /** @nullable */
   supplier: string | null;
   /** @nullable */

@@ -7,6 +7,9 @@ import {
   ListMovementsResponse,
   RecordStockCountBody,
   RecordStockCountResponse,
+  UpdateMovementApprovalBody,
+  UpdateMovementApprovalParams,
+  UpdateMovementApprovalResponse,
 } from "@workspace/api-zod";
 import {
   db,
@@ -18,6 +21,7 @@ import {
 } from "@workspace/db";
 import { getAppUser } from "../lib/app-users";
 import {
+  getInventoryMovementById,
   listInventoryMovements,
   roundMoney,
   roundUnitCost,
@@ -27,6 +31,8 @@ import { requireRole } from "../middlewares/auth";
 const router: IRouter = Router();
 
 class InsufficientStockError extends Error {}
+class MovementConflictError extends Error {}
+class MovementNotFoundError extends Error {}
 
 function roundQuantity(value: number): number {
   return Math.round(value * 1000) / 1000;
@@ -71,7 +77,7 @@ router.get("/movements", async (req, res): Promise<void> => {
 
 router.post(
   "/movements",
-  requireRole("warehouse_manager"),
+  requireRole("admin", "warehouse_manager"),
   async (req, res): Promise<void> => {
     const parsed = CreateMovementBody.safeParse(req.body);
     if (!parsed.success) {
@@ -131,31 +137,10 @@ router.post(
           throw new InsufficientStockError("الكمية المطلوبة أكبر من الرصيد المتاح");
         }
 
-        const nextQuantity =
-          input.type === "in"
-            ? roundQuantity(balance.quantity + quantity)
-            : roundQuantity(balance.quantity - quantity);
         const unitCost =
           input.type === "in"
             ? roundUnitCost(input.unitCost ?? balance.averageUnitCost)
-            : balance.averageUnitCost;
-        const nextAverageUnitCost =
-          input.type === "in" && nextQuantity > 0
-            ? roundUnitCost(
-                (balance.quantity * balance.averageUnitCost +
-                  quantity * unitCost) /
-                  nextQuantity,
-              )
-            : balance.averageUnitCost;
-        const totalValue = roundMoney(quantity * unitCost);
-        await tx
-          .update(inventoryBalancesTable)
-          .set({
-            quantity: nextQuantity,
-            averageUnitCost: nextAverageUnitCost,
-            updatedAt: new Date(),
-          })
-          .where(eq(inventoryBalancesTable.id, balance.id));
+            : 0;
 
         const [movement] = await tx
           .insert(inventoryMovementsTable)
@@ -163,9 +148,10 @@ router.post(
             itemId: item.id,
             warehouseId: warehouse.id,
             type: input.type,
+            approvalStatus: "pending",
             quantity,
             unitCost,
-            totalValue,
+            totalValue: 0,
             supplier: input.supplier?.trim() || null,
             invoiceNumber: input.invoiceNumber?.trim() || null,
             projectId: project?.id ?? null,
@@ -184,9 +170,13 @@ router.post(
           warehouseId: warehouse.id,
           warehouseName: warehouse.name,
           type: movement.type,
+          approvalStatus: movement.approvalStatus,
           quantity: movement.quantity,
           unitCost: movement.unitCost,
           totalValue: movement.totalValue,
+          approvedAt: null,
+          approverName: null,
+          approvalNotes: null,
           supplier: movement.supplier,
           invoiceNumber: movement.invoiceNumber,
           projectId: project?.id ?? null,
@@ -210,9 +200,118 @@ router.post(
   },
 );
 
+router.patch(
+  "/movements/:id/approval",
+  requireRole("admin"),
+  async (req, res): Promise<void> => {
+    const params = UpdateMovementApprovalParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const parsed = UpdateMovementApprovalBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const approver = getAppUser(req);
+    const approvedAt = new Date();
+    try {
+      await db.transaction(async (tx) => {
+        const [movement] = await tx
+          .select()
+          .from(inventoryMovementsTable)
+          .where(eq(inventoryMovementsTable.id, params.data.id))
+          .limit(1)
+          .for("update");
+        if (!movement) throw new MovementNotFoundError("الحركة غير موجودة");
+        if (movement.approvalStatus !== "pending") {
+          throw new MovementConflictError("تمت معالجة هذه الحركة مسبقًا");
+        }
+
+        if (parsed.data.decision === "reject") {
+          await tx
+            .update(inventoryMovementsTable)
+            .set({
+              approvalStatus: "rejected",
+              approvedBy: approver.id,
+              approvedAt,
+              approvalNotes: parsed.data.notes?.trim() || null,
+            })
+            .where(eq(inventoryMovementsTable.id, movement.id));
+          return;
+        }
+
+        const balance = await lockBalance(
+          tx,
+          movement.itemId,
+          movement.warehouseId,
+        );
+        if (!balance) throw new Error("تعذر قراءة رصيد المادة");
+        if (movement.type === "out" && movement.quantity > balance.quantity) {
+          throw new InsufficientStockError(
+            "لا يمكن اعتماد الصرف لأن الرصيد المتاح أصبح أقل من الكمية المطلوبة",
+          );
+        }
+
+        const nextQuantity =
+          movement.type === "in"
+            ? roundQuantity(balance.quantity + movement.quantity)
+            : roundQuantity(balance.quantity - movement.quantity);
+        const unitCost =
+          movement.type === "in"
+            ? movement.unitCost
+            : balance.averageUnitCost;
+        const nextAverageUnitCost =
+          movement.type === "in" && nextQuantity > 0
+            ? roundUnitCost(
+                (balance.quantity * balance.averageUnitCost +
+                  movement.quantity * unitCost) /
+                  nextQuantity,
+              )
+            : balance.averageUnitCost;
+        const totalValue = roundMoney(movement.quantity * unitCost);
+        await tx
+          .update(inventoryBalancesTable)
+          .set({
+            quantity: nextQuantity,
+            averageUnitCost: nextAverageUnitCost,
+            updatedAt: approvedAt,
+          })
+          .where(eq(inventoryBalancesTable.id, balance.id));
+        await tx
+          .update(inventoryMovementsTable)
+          .set({
+            approvalStatus: "approved",
+            approvedBy: approver.id,
+            approvedAt,
+            approvalNotes: parsed.data.notes?.trim() || null,
+            unitCost,
+            totalValue,
+          })
+          .where(eq(inventoryMovementsTable.id, movement.id));
+      });
+    } catch (error) {
+      if (error instanceof InsufficientStockError || error instanceof MovementConflictError) {
+        res.status(409).json({ error: error.message });
+        return;
+      }
+      if (error instanceof MovementNotFoundError) {
+        res.status(404).json({ error: error.message });
+        return;
+      }
+      throw error;
+    }
+
+    const movement = await getInventoryMovementById(params.data.id);
+    if (!movement) throw new Error("تعذر تحميل الحركة بعد مراجعتها");
+    res.json(UpdateMovementApprovalResponse.parse(movement));
+  },
+);
+
 router.post(
   "/inventory/counts",
-  requireRole("warehouse_manager"),
+  requireRole("admin", "warehouse_manager"),
   async (req, res): Promise<void> => {
     const parsed = RecordStockCountBody.safeParse(req.body);
     if (!parsed.success) {
@@ -258,12 +357,15 @@ router.post(
           itemId: item.id,
           warehouseId: warehouse.id,
           type: "adjustment",
+          approvalStatus: "approved",
           quantity: adjustment,
           unitCost: balance.averageUnitCost,
           totalValue,
           notes: input.notes?.trim() || "تسوية جرد فعلي",
           occurredOn: toSqlDate(input.occurredOn),
           actorId: user.id,
+          approvedBy: user.id,
+          approvedAt: new Date(),
         })
         .returning();
 
@@ -275,9 +377,13 @@ router.post(
         warehouseId: warehouse.id,
         warehouseName: warehouse.name,
         type: created.type,
+        approvalStatus: created.approvalStatus,
         quantity: created.quantity,
         unitCost: created.unitCost,
         totalValue: created.totalValue,
+        approvedAt: created.approvedAt,
+        approverName: user.name,
+        approvalNotes: created.approvalNotes,
         supplier: null,
         invoiceNumber: null,
         projectId: null,

@@ -37,6 +37,7 @@ import type {
   ListMovementsParams,
   ListProjectsParams,
   Movement,
+  MovementApprovalInput,
   MovementInput,
   NotFoundResponse,
   Project,
@@ -45,7 +46,8 @@ import type {
   StockCountInput,
   UnauthorizedResponse,
   UserRoleInput,
-  Warehouse
+  Warehouse,
+  WarehouseInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -306,6 +308,94 @@ export function useListWarehouses<TData = Awaited<ReturnType<typeof listWarehous
 
 
 
+
+export const getCreateWarehouseUrl = () => {
+
+
+
+
+  return `/api/warehouses`
+}
+
+/**
+ * @summary Create a warehouse
+ */
+export const createWarehouse = async (warehouseInput: WarehouseInput, options?: Parameters<typeof customFetch>[1]): Promise<Warehouse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Warehouse>(getCreateWarehouseUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(warehouseInput)
+  }
+);}
+
+
+
+
+
+export const getCreateWarehouseMutationKey = () => ['createWarehouse'] as const;
+
+export const getCreateWarehouseMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWarehouse>>, TError,CreateWarehouseMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createWarehouse>>, TError,CreateWarehouseMutationVariables, TContext> => {
+
+const mutationKey = getCreateWarehouseMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createWarehouse>>, CreateWarehouseMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createWarehouse(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateWarehouseMutationResult = NonNullable<Awaited<ReturnType<typeof createWarehouse>>>
+    export type CreateWarehouseMutationBody = BodyType<WarehouseInput>
+    export type CreateWarehouseMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | Error>
+    export type CreateWarehouseMutationVariables = {data: BodyType<WarehouseInput>}
+
+    /**
+ * @summary Create a warehouse
+ */
+export const useCreateWarehouse = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWarehouse>>, TError,CreateWarehouseMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createWarehouse>>,
+        TError,
+        CreateWarehouseMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateWarehouseMutationOptions(options));
+    }
 
 export const getListItemsUrl = (params?: ListItemsParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -922,7 +1012,7 @@ export const getCreateMovementUrl = () => {
 }
 
 /**
- * @summary Record a stock receipt or issue
+ * @summary Submit a stock receipt or issue for approval
  */
 export const createMovement = async (movementInput: MovementInput, options?: Parameters<typeof customFetch>[1]): Promise<Movement> => {
 
@@ -988,7 +1078,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateMovementMutationVariables = {data: BodyType<MovementInput>}
 
     /**
- * @summary Record a stock receipt or issue
+ * @summary Submit a stock receipt or issue for approval
  */
 export const useCreateMovement = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | Error>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMovement>>, TError,CreateMovementMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -999,6 +1089,95 @@ export const useCreateMovement = <TError = ErrorType<BadRequestResponse | Unauth
         TContext
       > => {
       return useMutation(getCreateMovementMutationOptions(options));
+    }
+
+export const getUpdateMovementApprovalUrl = (id: number,) => {
+
+
+
+
+  return `/api/movements/${id}/approval`
+}
+
+/**
+ * @summary Approve or reject a pending stock movement
+ */
+export const updateMovementApproval = async (id: number,
+    movementApprovalInput: MovementApprovalInput, options?: Parameters<typeof customFetch>[1]): Promise<Movement> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Movement>(getUpdateMovementApprovalUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(movementApprovalInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateMovementApprovalMutationKey = () => ['updateMovementApproval'] as const;
+
+export const getUpdateMovementApprovalMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMovementApproval>>, TError,UpdateMovementApprovalMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMovementApproval>>, TError,UpdateMovementApprovalMutationVariables, TContext> => {
+
+const mutationKey = getUpdateMovementApprovalMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMovementApproval>>, UpdateMovementApprovalMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateMovementApproval(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMovementApprovalMutationResult = NonNullable<Awaited<ReturnType<typeof updateMovementApproval>>>
+    export type UpdateMovementApprovalMutationBody = BodyType<MovementApprovalInput>
+    export type UpdateMovementApprovalMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | Error>
+    export type UpdateMovementApprovalMutationVariables = {id: number;data: BodyType<MovementApprovalInput>}
+
+    /**
+ * @summary Approve or reject a pending stock movement
+ */
+export const useUpdateMovementApproval = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMovementApproval>>, TError,UpdateMovementApprovalMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMovementApproval>>,
+        TError,
+        UpdateMovementApprovalMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateMovementApprovalMutationOptions(options));
     }
 
 export const getRecordStockCountUrl = () => {

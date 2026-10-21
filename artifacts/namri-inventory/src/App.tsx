@@ -14,12 +14,14 @@ import {
   Users, Warehouse, X,
 } from 'lucide-react';
 import {
-  getGetDashboardQueryKey, getGetInventoryReportQueryKey, getGetCurrentUserQueryKey,
-  getListItemsQueryKey, getListMovementsQueryKey, getListProjectsQueryKey, getListUsersQueryKey,
-  useCreateItem, useCreateMovement, useCreateProject,
-  useGetBackupExport, useGetCurrentUser, useGetDashboard, useGetInventoryReport,
-  useListItems, useListMovements, useListProjects, useListUsers, useListWarehouses,
-  useRecordStockCount, useUpdateItem, useUpdateProject, useUpdateUserRole,
+  getGetBackupExportQueryKey, getGetDashboardQueryKey, getGetInventoryReportQueryKey,
+  getGetMovementReportQueryKey, getGetCurrentUserQueryKey, getListItemsQueryKey,
+  getListMovementsQueryKey, getListProjectsQueryKey, getListUsersQueryKey,
+  getListWarehousesQueryKey, useCreateItem, useCreateMovement, useCreateProject,
+  useCreateWarehouse, useGetBackupExport, useGetCurrentUser, useGetDashboard,
+  useGetInventoryReport, useGetMovementReport, useListItems, useListMovements,
+  useListProjects, useListUsers, useListWarehouses, useRecordStockCount,
+  useUpdateItem, useUpdateMovementApproval, useUpdateProject, useUpdateUserRole,
 } from '@workspace/api-client-react';
 import type { AppUser, InventoryItem, Movement, MovementInput, Project, Warehouse as WarehouseType } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -82,6 +84,7 @@ const routes = [
   { href: '/transactions/new', label: 'تسجيل حركة', icon: ArrowDownToLine },
   { href: '/history', label: 'سجل الحركات', icon: Activity },
   { href: '/reports', label: 'التقارير', icon: FileText },
+  { href: '/approvals', label: 'اعتمادات الحركات', icon: Check, admin: true },
   { href: '/projects', label: 'المشاريع', icon: Building2 },
   { href: '/users', label: 'إدارة المستخدمين', icon: Users, admin: true },
 ];
@@ -255,20 +258,28 @@ function MovementBadge({ type }: { type: Movement['type'] }) {
   return <span className={`move-type ${type}`} data-testid={`movement-type-${type}`}><Icon size={13} />{label}</span>;
 }
 
+function ApprovalBadge({ status }: { status: Movement['approvalStatus'] }) {
+  const label = status === 'pending' ? 'قيد المراجعة' : status === 'approved' ? 'معتمد' : 'مرفوض';
+  return <span className={`status-pill ${status === 'pending' ? 'warning' : status === 'rejected' ? 'neutral' : ''}`} data-testid={`approval-status-${status}`}>{label}</span>;
+}
+
 function InventoryPage() {
   const [search, setSearch] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
   const [category, setCategory] = useState('');
   const [modal, setModal] = useState<'new' | 'edit' | 'stocktake' | null>(null);
+  const [showWarehouseForm, setShowWarehouseForm] = useState(false);
   const [selected, setSelected] = useState<InventoryItem | null>(null);
   const { data: warehouses = [] } = useListWarehouses();
   const params = useMemo(() => ({ q: search || undefined, warehouseId: warehouseId ? Number(warehouseId) : undefined, category: category || undefined }), [search, warehouseId, category]);
   const { data: items = [], isLoading, isError, refetch } = useListItems(params);
   const { data: allItems = [] } = useListItems();
   const { data: user } = useGetCurrentUser();
-  const canWrite = user?.role === 'warehouse_manager';
+  const canWrite = user?.role === 'admin' || user?.role === 'warehouse_manager';
+  const canCreateWarehouse = user?.role === 'admin';
   const open = (kind: 'edit' | 'stocktake', item: InventoryItem) => { setSelected(item); setModal(kind); };
   return <div data-testid="page-inventory"><PageTitle title="المخزون" description="أرصدة المواد المسجلة موزعة حسب المستودع." >
+    {canCreateWarehouse && <Button onClick={() => setShowWarehouseForm(true)} testId="button-create-warehouse"><Warehouse size={15} /> مستودع جديد</Button>}
     {canWrite && <><Button onClick={() => { setSelected(null); setModal('new'); }} kind="btn-primary" testId="button-add-item"><Plus size={15} /> إضافة مادة</Button><Link className="btn" href="/transactions/new" data-testid="link-stock-movement"><ArrowDownLeft size={15} /> تسجيل حركة</Link></>}
   </PageTitle>
     <div className="filters"><div className="search-wrap"><Search size={16} /><input className="field search-field" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="ابحث بالاسم أو الرمز..." aria-label="البحث في المخزون" data-testid="input-inventory-search" /></div>
@@ -279,12 +290,13 @@ function InventoryPage() {
     <section className="panel page-table-panel" data-testid="panel-inventory-table">
       {isLoading ? <div className="panel-pad" style={{ display: 'grid', gap: 14 }}>{[0,1,2,3,4].map(i => <div className="skeleton" key={i} style={{ height: 38 }} />)}</div>
         : isError ? <div className="panel-pad"><ErrorState onRetry={() => { void refetch(); }} /></div>
-        : items.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>المادة</th><th>الفئة</th><th>الرصيد الكلي</th><th>الحد الأدنى</th><th>المستودعات</th><th>الحالة</th>{canWrite && <th>إجراءات</th>}</tr></thead><tbody>{items.map(item => <tr key={item.id} data-testid={`row-item-${item.id}`}><td><div className="item-cell"><span className="item-symbol"><Package size={15} /></span><span><span className="item-primary">{item.name}</span><span className="item-secondary">{item.code} · {item.unit}</span></span></div></td><td>{item.category}</td><td><b style={{ color: '#27445a' }}>{fmt(item.totalStock)}</b> <span className="item-secondary">{item.unit}</span></td><td>{fmt(item.minStock)} {item.unit}</td><td>{item.warehouseStocks.map(s => <div key={s.warehouseId} className="item-secondary" data-testid={`warehouse-stock-${item.id}-${s.warehouseId}`}>{s.warehouseName}: <b>{fmt(s.quantity)}</b></div>)}</td><td><span className={`status-pill ${item.totalStock <= item.minStock ? 'warning' : ''}`} data-testid={`status-stock-${item.id}`}>{item.totalStock <= item.minStock ? 'منخفض' : 'متوفر'}</span></td>{canWrite && <td><div style={{ display: 'flex', gap: 6 }}><button className="icon-btn" title="تعديل بيانات المادة" aria-label={`تعديل ${item.name}`} onClick={() => open('edit', item)} data-testid={`button-edit-item-${item.id}`}><Pencil size={14} /></button><button className="icon-btn" title="الجرد الفعلي" aria-label={`جرد ${item.name}`} onClick={() => open('stocktake', item)} data-testid={`button-stocktake-item-${item.id}`}><ClipboardList size={14} /></button></div></td>}</tr>)}</tbody></table></div>
+        : items.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>المادة</th><th>الفئة</th><th>الرصيد الكلي</th><th>الحد الأدنى</th><th>المستودعات</th><th>الحالة</th>{canWrite && <th>إجراءات</th>}</tr></thead><tbody>{items.map(item => <tr key={item.id} data-testid={`row-item-${item.id}`}><td><div className="item-cell"><span className="item-symbol"><Package size={15} /></span><span><span className="item-primary">{item.name}</span><span className="item-secondary">{item.code} · {item.unit}</span></span></div></td><td>{item.category}</td><td><b style={{ color: '#27445a' }}>{fmt(item.totalStock)}</b> <span className="item-secondary">{item.unit}</span><div className="item-secondary">{fmtMoney(item.totalValue)}</div></td><td>{fmt(item.minStock)} {item.unit}</td><td>{item.warehouseStocks.map(s => <div key={s.warehouseId} className="item-secondary" data-testid={`warehouse-stock-${item.id}-${s.warehouseId}`}>{s.warehouseName}: <b>{fmt(s.quantity)}</b></div>)}</td><td><span className={`status-pill ${item.totalStock <= item.minStock ? 'warning' : ''}`} data-testid={`status-stock-${item.id}`}>{item.totalStock <= item.minStock ? 'منخفض' : 'متوفر'}</span></td>{canWrite && <td><div style={{ display: 'flex', gap: 6 }}><button className="icon-btn" title="تعديل بيانات المادة" aria-label={`تعديل ${item.name}`} onClick={() => open('edit', item)} data-testid={`button-edit-item-${item.id}`}><Pencil size={14} /></button><button className="icon-btn" title="الجرد الفعلي" aria-label={`جرد ${item.name}`} onClick={() => open('stocktake', item)} data-testid={`button-stocktake-item-${item.id}`}><ClipboardList size={14} /></button></div></td>}</tr>)}</tbody></table></div>
         : <Empty icon={Package} title="لا توجد مواد مطابقة" detail={search ? 'جرّب تغيير عبارة البحث أو المستودع.' : 'أضف أول مادة إلى سجل المخزون.'} action={canWrite && <Button onClick={() => setModal('new')} kind="btn-primary" testId="button-empty-add-item"><Plus size={14} /> إضافة مادة</Button>} />}
     </section>
     {modal === 'new' && <ItemForm warehouses={warehouses} onClose={() => setModal(null)} />}
     {modal === 'edit' && selected && <ItemForm item={selected} warehouses={warehouses} onClose={() => setModal(null)} />}
-    {modal === 'stocktake' && selected && <StocktakeForm item={selected} warehouses={warehouses} onClose={() => setModal(null)} />}
+     {modal === 'stocktake' && selected && <StocktakeForm item={selected} warehouses={warehouses} onClose={() => setModal(null)} />}
+     {showWarehouseForm && <WarehouseForm onClose={() => setShowWarehouseForm(false)} />}
   </div>;
 }
 
@@ -315,6 +327,39 @@ function ItemForm({ item, warehouses, onClose }: { item?: InventoryItem; warehou
   </form></Modal>;
 }
 
+function WarehouseForm({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const create = useCreateWarehouse();
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    create.mutate(
+      {
+        data: {
+          name: String(form.get('name')).trim(),
+          location: String(form.get('location')).trim(),
+        },
+      },
+      {
+        onSuccess: async () => {
+          await qc.invalidateQueries({ queryKey: getListWarehousesQueryKey() });
+          onClose();
+        },
+      },
+    );
+  }
+  return <Modal title="إضافة مستودع" onClose={onClose} testId="modal-warehouse-form">
+    <form onSubmit={submit} data-testid="form-warehouse">
+      <div className="form-grid">
+        <div className="span-two"><Field label="اسم المستودع" name="name" required placeholder="مثال: مستودع المشروع" /></div>
+        <div className="span-two"><Field label="المدينة أو الموقع" name="location" required placeholder="المفرق أو عمان" /></div>
+      </div>
+      {create.isError && <div className="field-hint" role="alert" data-testid="status-warehouse-save-error" style={{ color: '#ae5149', marginTop: 12 }}>تعذر حفظ المستودع. قد يكون الاسم مستخدماً مسبقاً.</div>}
+      <div className="form-actions"><Button type="submit" kind="btn-primary" disabled={create.isPending} testId="button-save-warehouse">{create.isPending ? 'جارٍ الحفظ...' : 'حفظ المستودع'}</Button><Button onClick={onClose} testId="button-cancel-warehouse">إلغاء</Button></div>
+    </form>
+  </Modal>;
+}
+
 function Field({ label, name, required, defaultValue, placeholder, type = 'text', min, step }: { label: string; name: string; required?: boolean; defaultValue?: string | number; placeholder?: string; type?: string; min?: string; step?: string }) {
   return <label className="field-block"><span className="field-label">{label}</span><input className="field" name={name} required={required} type={type} min={min} step={step} defaultValue={defaultValue} placeholder={placeholder} data-testid={`input-${name}`} /></label>;
 }
@@ -337,13 +382,13 @@ function StocktakeForm({ item, warehouses, onClose }: { item: InventoryItem; war
 function TransactionPage() {
   const qc = useQueryClient(); const create = useCreateMovement();
   const { data: items = [] } = useListItems(); const { data: warehouses = [] } = useListWarehouses(); const { data: projects = [] } = useListProjects({ status: 'active' });
-  const { data: user } = useGetCurrentUser(); const canWrite = user?.role === 'warehouse_manager';
+  const { data: user } = useGetCurrentUser(); const canWrite = user?.role === 'admin' || user?.role === 'warehouse_manager';
   const [type, setType] = useState<'in' | 'out'>('in');
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault(); const f = new FormData(e.currentTarget);
     const form = e.currentTarget;
     const movement: MovementInput = { itemId: Number(f.get('itemId')), warehouseId: Number(f.get('warehouseId')), type, quantity: Number(f.get('quantity')), unitCost: type === 'in' ? Number(f.get('unitCost')) : undefined, occurredOn: String(f.get('occurredOn')), supplier: String(f.get('supplier') || '') || undefined, invoiceNumber: String(f.get('invoiceNumber') || '') || undefined, projectId: f.get('projectId') ? Number(f.get('projectId')) : undefined, recipient: String(f.get('recipient') || '') || undefined, notes: String(f.get('notes') || '') || undefined };
-    create.mutate({ data: movement }, { onSuccess: async () => { await qc.invalidateQueries({ queryKey: getListMovementsQueryKey() }); await qc.invalidateQueries({ queryKey: getListItemsQueryKey() }); await qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); await qc.invalidateQueries({ queryKey: getGetInventoryReportQueryKey() }); form.reset(); setType('in'); } });
+    create.mutate({ data: movement }, { onSuccess: async () => { await qc.invalidateQueries({ queryKey: getListMovementsQueryKey() }); await qc.invalidateQueries({ queryKey: getGetMovementReportQueryKey() }); form.reset(); setType('in'); } });
   }
   if (!canWrite) return <AccessDenied />;
   return <div data-testid="page-transaction-new"><PageTitle title="تسجيل حركة مخزون" description="وثّق استلام المواد أو صرفها إلى أحد المشاريع." />
@@ -361,8 +406,8 @@ function TransactionPage() {
           <label className="field-block span-two"><span className="field-label">ملاحظات</span><textarea className="field" name="notes" placeholder="تفاصيل إضافية عن الحركة..." data-testid="input-movement-notes" /></label>
         </div>
         {create.isError && <div className="error-box" role="alert" data-testid="status-movement-error" style={{ marginTop: 14 }}>لم تُسجل الحركة. تأكد من توفر الرصيد وصحة التفاصيل.</div>}
-        {create.isSuccess && <div className="status-pill" data-testid="status-movement-success" style={{ marginTop: 12 }}><Check size={13} /> تم تسجيل الحركة بنجاح وتحديث الرصيد</div>}
-        <div className="form-actions"><Button type="submit" kind="btn-primary" disabled={create.isPending} testId="button-submit-movement">{create.isPending ? 'جارٍ تسجيل الحركة...' : type === 'in' ? 'تأكيد الاستلام' : 'تأكيد الصرف'} <ArrowLeft size={14} /></Button></div>
+        {create.isSuccess && <div className="status-pill" data-testid="status-movement-success" style={{ marginTop: 12 }}><Check size={13} /> تم إرسال الحركة للاعتماد. لن يتغير الرصيد حتى يوافق عليها مدير النظام.</div>}
+        <div className="form-actions"><Button type="submit" kind="btn-primary" disabled={create.isPending} testId="button-submit-movement">{create.isPending ? 'جارٍ الإرسال...' : 'إرسال للاعتماد'} <ArrowLeft size={14} /></Button></div>
       </form>}
     </section><aside className="panel panel-pad"><div className="panel-heading"><div><h2 className="panel-title">قبل تسجيل الحركة</h2><div className="panel-subtitle">تحقق من المعلومات الأساسية</div></div><ShieldCheck size={18} color="#438a78" /></div>
       <div style={{ display: 'grid', gap: 15, color: '#64798a', fontSize: 11, lineHeight: 1.9 }}><div><b style={{ color: '#315168' }}>الاستلام الوارد</b><br />يسجل المواد المستلمة من المورد ويضيفها إلى رصيد المستودع.</div><div><b style={{ color: '#315168' }}>الصرف للمشروع</b><br />يخصم الكمية من الرصيد ويربطها بالمشروع والمستلم.</div><div style={{ padding: 12, borderRadius: 9, background: '#edf7fa', color: '#527386' }}>يُحفظ اسم المستخدم ووقت التسجيل تلقائياً في سجل الحركة.</div></div>
@@ -371,7 +416,7 @@ function TransactionPage() {
 }
 
 function AccessDenied() {
-  return <div data-testid="page-access-denied"><PageTitle title="ليس لديك صلاحية" description="تعديل أرصدة المخزون متاح لمدير المستودع." /><section className="panel"><Empty icon={ShieldCheck} title="صلاحية العرض فقط" detail="يمكنك مراجعة البيانات والتقارير، لكن لا يمكنك إجراء تغييرات." /></section></div>;
+  return <div data-testid="page-access-denied"><PageTitle title="ليس لديك صلاحية" description="هذه العملية متاحة لمدير النظام أو مدير المستودع." /><section className="panel"><Empty icon={ShieldCheck} title="صلاحية العرض فقط" detail="يمكنك مراجعة البيانات والتقارير، لكن لا يمكنك إجراء تغييرات." /></section></div>;
 }
 
 function HistoryPage() {
@@ -388,36 +433,141 @@ function HistoryPage() {
   </div>;
 }
 
+function ApprovalsPage() {
+  const { data: user } = useGetCurrentUser();
+  const { data: pending = [], isLoading, isError, refetch } =
+    useListMovements({ approvalStatus: 'pending', limit: 1000 });
+  const update = useUpdateMovementApproval();
+  const qc = useQueryClient();
+  if (user?.role !== 'admin') return <AccessDenied />;
+
+  function decide(id: number, decision: 'approve' | 'reject') {
+    if (decision === 'reject' && !window.confirm('هل تريد رفض هذه الحركة؟')) return;
+    update.mutate(
+      { id, data: { decision } },
+      {
+        onSuccess: async () => {
+          await qc.invalidateQueries({ queryKey: getListMovementsQueryKey() });
+          await qc.invalidateQueries({ queryKey: getGetMovementReportQueryKey() });
+          await qc.invalidateQueries({ queryKey: getListItemsQueryKey() });
+          await qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+          await qc.invalidateQueries({ queryKey: getGetInventoryReportQueryKey() });
+        },
+      },
+    );
+  }
+
+  return <div data-testid="page-approvals">
+    <PageTitle title="اعتمادات الحركات" description="راجع طلبات الاستلام والصرف. لا يتغير الرصيد قبل اعتماد الحركة." />
+    <div className="filters"><span className="live-badge"><ClipboardList size={13} /> {fmt(pending.length)} طلب بانتظار المراجعة</span></div>
+    {update.isError && <div className="error-box" role="alert" data-testid="status-approval-error">تعذر اعتماد الحركة. قد يكون الرصيد المتاح تغيّر أو عولج الطلب مسبقاً.</div>}
+    <section className="panel page-table-panel" data-testid="panel-pending-approvals">
+      {isLoading ? <div className="panel-pad"><div className="skeleton" style={{ height: 150 }} /></div>
+        : isError ? <div className="panel-pad"><ErrorState onRetry={() => { void refetch(); }} /></div>
+        : pending.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>المادة</th><th>الطلب</th><th>المستودع</th><th>التفاصيل</th><th>مقدم الطلب</th><th className="no-print">القرار</th></tr></thead><tbody>{pending.map(m => <tr key={m.id} data-testid={`row-pending-${m.id}`}>
+          <td><div className="item-primary">{m.itemName}</div><div className="item-secondary">{m.itemCode}</div></td>
+          <td><MovementBadge type={m.type} /><div style={{ marginTop: 5 }}><b>{fmt(m.quantity)}</b></div></td>
+          <td>{m.warehouseName}</td>
+          <td>{m.projectName || m.supplier || '—'}{m.invoiceNumber && <div className="item-secondary">فاتورة {m.invoiceNumber}</div>}</td>
+          <td>{m.actorName}<div className="item-secondary">{fmtDate(m.createdAt)}</div></td>
+          <td className="no-print"><div style={{ display: 'flex', gap: 6 }}><Button kind="btn-primary" disabled={update.isPending} onClick={() => decide(m.id, 'approve')} testId={`button-approve-${m.id}`}><Check size={14} /> اعتماد</Button><Button kind="btn-danger" disabled={update.isPending} onClick={() => decide(m.id, 'reject')} testId={`button-reject-${m.id}`}>رفض</Button></div></td>
+        </tr>)}</tbody></table></div>
+        : <Empty icon={Check} title="لا توجد طلبات معلّقة" detail="ستظهر هنا حركات الاستلام والصرف بعد إرسالها للمراجعة." />}
+    </section>
+  </div>;
+}
+
 function MovementDetailTable({ movements }: { movements: Movement[] }) {
-  return <div className="table-wrap"><table className="data-table"><thead><tr><th>التاريخ</th><th>المادة</th><th>النوع</th><th>المستودع</th><th>الكمية</th><th>قيمة الحركة</th><th>المشروع / المورّد</th><th>المستخدم</th></tr></thead><tbody>{movements.map(m => <tr key={m.id} data-testid={`row-history-movement-${m.id}`}><td>{fmtDate(m.occurredOn)}</td><td><div className="item-primary">{m.itemName}</div><div className="item-secondary">{m.itemCode}</div></td><td><MovementBadge type={m.type} /></td><td>{m.warehouseName}</td><td><b>{fmt(m.quantity)}</b></td><td>{fmtMoney(m.totalValue)}</td><td>{m.projectName || m.supplier || '—'}{m.invoiceNumber && <div className="item-secondary">فاتورة {m.invoiceNumber}</div>}</td><td>{m.actorName}</td></tr>)}</tbody></table></div>;
+  return <div className="table-wrap"><table className="data-table"><thead><tr><th>التاريخ</th><th>المادة</th><th>النوع</th><th>حالة الاعتماد</th><th>المستودع</th><th>الكمية</th><th>قيمة الحركة</th><th>المشروع / المورّد</th><th>المستخدم</th></tr></thead><tbody>{movements.map(m => <tr key={m.id} data-testid={`row-history-movement-${m.id}`}><td>{fmtDate(m.occurredOn)}</td><td><div className="item-primary">{m.itemName}</div><div className="item-secondary">{m.itemCode}</div></td><td><MovementBadge type={m.type} /></td><td><ApprovalBadge status={m.approvalStatus} /></td><td>{m.warehouseName}</td><td><b>{fmt(m.quantity)}</b></td><td>{fmtMoney(m.totalValue)}</td><td>{m.projectName || m.supplier || '—'}{m.invoiceNumber && <div className="item-secondary">فاتورة {m.invoiceNumber}</div>}</td><td>{m.actorName}</td></tr>)}</tbody></table></div>;
 }
 
 function ReportsPage() {
   const [warehouseId, setWarehouseId] = useState(''); const [voucher, setVoucher] = useState<Movement | null>(null);
+  const [backupStatus, setBackupStatus] = useState('');
   const reportParams = useMemo(() => ({ warehouseId: warehouseId ? Number(warehouseId) : undefined }), [warehouseId]);
   const { data: rows = [], isLoading, isError, refetch } = useGetInventoryReport(reportParams);
   const { data: warehouses = [] } = useListWarehouses();
-  const { data: movements = [] } = useListMovements({ limit: 500, warehouseId: warehouseId ? Number(warehouseId) : undefined });
-  const download = (name: string, data: string) => { const blob = new Blob(['\ufeff', data], { type: 'text/csv;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url); };
-  const exportInventory = () => download('namri-inventory.csv', ['رمز المادة,اسم المادة,الفئة,الوحدة,المستودع,الرصيد,حد إعادة الطلب,حالة المخزون', ...rows.map(r => [r.code,r.name,r.category,r.unit,r.warehouseName,r.quantity,r.minStock,r.lowStock ? 'منخفض' : 'متوفر'].map(csvCell).join(','))].join('\n'));
-  const exportMovements = () => download('namri-movements.csv', ['التاريخ,رمز المادة,اسم المادة,نوع الحركة,المستودع,الكمية,المشروع,المورّد,رقم الفاتورة,المستخدم', ...movements.map(m => [m.occurredOn,m.itemCode,m.itemName,m.type === 'in' ? 'استلام' : m.type === 'out' ? 'صرف' : 'تسوية',m.warehouseName,m.quantity,m.projectName || '',m.supplier || '',m.invoiceNumber || '',m.actorName].map(csvCell).join(','))].join('\n'));
-  return <div data-testid="page-reports"><PageTitle title="التقارير" description="استخرج أرصدة المخزون وسجل الحركات للطباعة والمراجعة." ><Button onClick={() => window.print()} testId="button-print-report"><Printer size={15} /> طباعة التقرير</Button></PageTitle>
+  const { data: movements = [], isLoading: movementsLoading, isError: movementsError } = useGetMovementReport(reportParams);
+  const { data: user } = useGetCurrentUser();
+  const backup = useGetBackupExport({ query: { enabled: false, queryKey: getGetBackupExportQueryKey() } });
+  async function exportBackup() {
+    setBackupStatus('');
+    const result = await backup.refetch();
+    if (!result.data) {
+      setBackupStatus('تعذر تنزيل النسخة الاحتياطية. تحقق من صلاحية حسابك ثم حاول مجدداً.');
+      return;
+    }
+    const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `namri-inventory-backup-${today()}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setBackupStatus('تم تنزيل نسخة احتياطية كاملة من بيانات المستودعات.');
+  }
+  const exportInventory = () => downloadXlsx('مخزون-نمري.xlsx', 'المخزون', rows.map(r => ({
+    'رمز المادة': r.code,
+    'اسم المادة': r.name,
+    'الفئة': r.category,
+    'الوحدة': r.unit,
+    'المستودع': r.warehouseName,
+    'الرصيد': r.quantity,
+    'متوسط تكلفة الوحدة (د.أ)': r.averageUnitCost,
+    'قيمة الرصيد (د.أ)': r.stockValue,
+    'حد إعادة الطلب': r.minStock,
+    'الحالة': r.lowStock ? 'منخفض' : 'متوفر',
+  })));
+  const exportMovements = () => downloadXlsx('حركات-نمري.xlsx', 'الحركات', movements.map(m => ({
+    'رقم الحركة': m.id,
+    'التاريخ': m.occurredOn,
+    'رمز المادة': m.itemCode,
+    'اسم المادة': m.itemName,
+    'نوع الحركة': m.type === 'in' ? 'استلام' : m.type === 'out' ? 'صرف' : 'تسوية',
+    'حالة الاعتماد': m.approvalStatus === 'pending' ? 'قيد المراجعة' : m.approvalStatus === 'approved' ? 'معتمد' : 'مرفوض',
+    'المستودع': m.warehouseName,
+    'الكمية': m.quantity,
+    'تكلفة الوحدة (د.أ)': m.unitCost,
+    'قيمة الحركة (د.أ)': m.totalValue,
+    'المشروع': m.projectName || '',
+    'المورّد': m.supplier || '',
+    'رقم الفاتورة': m.invoiceNumber || '',
+    'مقدم الطلب': m.actorName,
+    'المعتمد': m.approverName || '',
+    'ملاحظات الاعتماد': m.approvalNotes || '',
+  })));
+  return <div data-testid="page-reports"><PageTitle title="التقارير" description="استخرج الأرصدة والقيم المالية وسجل الحركات بصيغة Excel أو للطباعة." ><Button onClick={() => window.print()} testId="button-print-report"><Printer size={15} /> طباعة التقرير</Button>{user?.role === 'admin' && <Button onClick={() => void exportBackup()} disabled={backup.isFetching} testId="button-export-backup"><FileDown size={15} /> {backup.isFetching ? 'جارٍ تجهيز النسخة...' : 'تنزيل نسخة احتياطية'}</Button>}</PageTitle>
+    {backupStatus && <div className={backup.isError ? 'error-box' : 'status-pill'} role={backup.isError ? 'alert' : 'status'} data-testid="status-backup-export" style={{ marginBottom: 12 }}>{backupStatus}</div>}
     <div className="filters no-print"><select className="select-field" value={warehouseId} onChange={e => setWarehouseId(e.target.value)} data-testid="select-report-warehouse"><option value="">كل المستودعات</option>{warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select><span className="live-badge"><CalendarDays size={13} /> تاريخ استخراج التقرير: {fmtDate(today())}</span></div>
     <div className="content-grid" style={{ marginBottom: 16 }}>
-      <section className="panel panel-pad"><div className="panel-heading"><div><h2 className="panel-title">تقرير رصيد المخزون</h2><div className="panel-subtitle">الرصيد الحالي وحالة إعادة الطلب لكل مادة</div></div><Package size={18} color="#438aa5" /></div><div className="head-actions no-print"><Button kind="btn-primary" onClick={exportInventory} testId="button-export-inventory"><FileDown size={15} /> تصدير المخزون CSV</Button></div>
-        {isLoading ? <div style={{ display: 'grid', gap: 12, marginTop: 15 }}>{[0,1,2].map(i => <div className="skeleton" key={i} style={{ height: 26 }} />)}</div> : isError ? <div style={{ marginTop: 15 }}><ErrorState onRetry={() => { void refetch(); }} /></div> : <div style={{ marginTop: 14 }}><div className="live-badge" data-testid="text-report-count">{fmt(rows.length)} صف في التقرير</div></div>}
+      <section className="panel panel-pad"><div className="panel-heading"><div><h2 className="panel-title">تقرير رصيد المخزون</h2><div className="panel-subtitle">الرصيد الحالي والقيمة التقديرية وحالة إعادة الطلب</div></div><Package size={18} color="#438aa5" /></div><div className="head-actions no-print"><Button kind="btn-primary" onClick={exportInventory} testId="button-export-inventory"><FileDown size={15} /> تصدير المخزون Excel</Button></div>
+        {isLoading ? <div style={{ display: 'grid', gap: 12, marginTop: 15 }}>{[0,1,2].map(i => <div className="skeleton" key={i} style={{ height: 26 }} />)}</div> : isError ? <div style={{ marginTop: 15 }}><ErrorState onRetry={() => { void refetch(); }} /></div> : <div style={{ marginTop: 14 }}><div className="live-badge" data-testid="text-report-count">{fmt(rows.length)} صف · قيمة المخزون {fmtMoney(rows.reduce((sum, row) => sum + row.stockValue, 0))}</div></div>}
       </section>
-      <section className="panel panel-pad"><div className="panel-heading"><div><h2 className="panel-title">تقرير حركة المواد</h2><div className="panel-subtitle">سجل الحركات حتى آخر 500 عملية</div></div><Activity size={18} color="#438aa5" /></div><Button kind="btn-primary" onClick={exportMovements} testId="button-export-movements"><FileDown size={15} /> تصدير الحركات CSV</Button><div className="field-hint" style={{ marginTop: 12 }} data-testid="text-movements-report-count">{fmt(movements.length)} حركة متاحة للتصدير</div></section>
+      <section className="panel panel-pad"><div className="panel-heading"><div><h2 className="panel-title">تقرير حركة المواد</h2><div className="panel-subtitle">سجل كامل يشمل حالات الاعتماد والقيم المالية</div></div><Activity size={18} color="#438aa5" /></div><Button kind="btn-primary" onClick={exportMovements} disabled={movementsLoading || movementsError} testId="button-export-movements"><FileDown size={15} /> تصدير الحركات Excel</Button><div className="field-hint" style={{ marginTop: 12 }} data-testid="text-movements-report-count">{movementsError ? 'تعذر تحميل سجل الحركات' : `${fmt(movements.length)} حركة متاحة للتصدير`}</div></section>
     </div>
     <section className="panel page-table-panel" data-testid="panel-report-inventory"><div className="panel-pad"><div className="panel-heading" style={{ margin: 0 }}><div><h2 className="panel-title">كشف المواد والأرصدة</h2><div className="panel-subtitle">تقرير جاهز للطباعة · {fmt(rows.length)} بند</div></div></div></div>
-      {rows.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>الرمز</th><th>المادة</th><th>الفئة</th><th>الوحدة</th><th>المستودع</th><th>الرصيد</th><th>حد الطلب</th><th>الحالة</th><th className="no-print">سند</th></tr></thead><tbody>{rows.map((r,i) => <tr key={`${r.code}-${r.warehouseName}-${i}`} data-testid={`row-report-${i}`}><td>{r.code}</td><td><b>{r.name}</b></td><td>{r.category}</td><td>{r.unit}</td><td>{r.warehouseName}</td><td>{fmt(r.quantity)}</td><td>{fmt(r.minStock)}</td><td><span className={`status-pill ${r.lowStock ? 'warning' : ''}`}>{r.lowStock ? 'منخفض' : 'متوفر'}</span></td><td className="no-print"><button className="icon-btn" title="إنشاء سند صرف" onClick={() => setVoucher({ id: 0, itemId: 0, itemCode: r.code, itemName: r.name, warehouseId: 0, warehouseName: r.warehouseName, type: 'out', quantity: r.quantity, supplier: null, invoiceNumber: null, projectId: null, projectName: null, recipient: null, notes: null, occurredOn: today(), actorName: '', createdAt: '' })} data-testid={`button-voucher-${r.code}`}><FileText size={14} /></button></td></tr>)}</tbody></table></div> : !isLoading && !isError && <Empty icon={FileText} title="التقرير خالٍ من البيانات" detail="لا توجد أرصدة لعرضها في المستودع المحدد." />}
+      {rows.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>الرمز</th><th>المادة</th><th>الفئة</th><th>الوحدة</th><th>المستودع</th><th>الرصيد</th><th>متوسط التكلفة</th><th>قيمة الرصيد</th><th>حد الطلب</th><th>الحالة</th><th className="no-print">سند</th></tr></thead><tbody>{rows.map((r,i) => <tr key={`${r.code}-${r.warehouseName}-${i}`} data-testid={`row-report-${i}`}><td>{r.code}</td><td><b>{r.name}</b></td><td>{r.category}</td><td>{r.unit}</td><td>{r.warehouseName}</td><td>{fmt(r.quantity)}</td><td>{fmtMoney(r.averageUnitCost)}</td><td>{fmtMoney(r.stockValue)}</td><td>{fmt(r.minStock)}</td><td><span className={`status-pill ${r.lowStock ? 'warning' : ''}`}>{r.lowStock ? 'منخفض' : 'متوفر'}</span></td><td className="no-print"><button className="icon-btn" title="إنشاء سند صرف" onClick={() => setVoucher({ id: 0, itemId: 0, itemCode: r.code, itemName: r.name, warehouseId: 0, warehouseName: r.warehouseName, type: 'out', approvalStatus: 'approved', quantity: r.quantity, unitCost: r.averageUnitCost, totalValue: r.stockValue, approvedAt: null, approverName: null, approvalNotes: null, supplier: null, invoiceNumber: null, projectId: null, projectName: null, recipient: null, notes: null, occurredOn: today(), actorName: '', createdAt: '' })} data-testid={`button-voucher-${r.code}`}><FileText size={14} /></button></td></tr>)}</tbody></table></div> : !isLoading && !isError && <Empty icon={FileText} title="التقرير خالٍ من البيانات" detail="لا توجد أرصدة لعرضها في المستودع المحدد." />}
     </section>
     <section className="panel page-table-panel" style={{ marginTop: 16 }}><div className="panel-pad"><div className="panel-heading" style={{ margin: 0 }}><div><h2 className="panel-title">أحدث الحركات</h2><div className="panel-subtitle">انقر على السند لعرض تفاصيل الحركة</div></div></div></div>{movements.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>التاريخ</th><th>المادة</th><th>الحركة</th><th>الكمية</th><th>المستلم / المورد</th><th className="no-print">سند</th></tr></thead><tbody>{movements.slice(0,10).map(m => <tr key={m.id} data-testid={`row-report-movement-${m.id}`}><td>{fmtDate(m.occurredOn)}</td><td>{m.itemName}</td><td><MovementBadge type={m.type} /></td><td>{fmt(m.quantity)}</td><td>{m.recipient || m.supplier || '—'}</td><td className="no-print"><button className="icon-btn" onClick={() => setVoucher(m)} aria-label={`عرض سند الحركة ${m.id}`} data-testid={`button-view-voucher-${m.id}`}><FileText size={14} /></button></td></tr>)}</tbody></table></div> : <Empty icon={Activity} title="لا توجد حركات مسجلة" detail="ستظهر الحركات في هذا القسم بعد تسجيلها." />}</section>
     {voucher && <Modal title="سند حركة مخزون" onClose={() => setVoucher(null)} testId="modal-voucher"><div className="print-only" style={{ textAlign: 'center', marginBottom: 22 }}><Brand compact /></div><div style={{ textAlign: 'center', padding: '10px 0 20px', borderBottom: '1px solid #e6ebef' }}><div className="eyebrow" style={{ justifyContent: 'center' }}>شركة نمري للمقاولات</div><h2 style={{ color: '#173750', margin: '12px 0 4px' }}>سند {voucher.type === 'in' ? 'استلام' : 'صرف'} مواد</h2><span className="field-hint">رقم الحركة: {voucher.id || 'سند رصيد'}</span></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 15, padding: '22px 0', fontSize: 12 }}><div><span className="field-hint">المادة</span><div className="item-primary">{voucher.itemName}</div></div><div><span className="field-hint">رمز المادة</span><div>{voucher.itemCode}</div></div><div><span className="field-hint">المستودع</span><div>{voucher.warehouseName}</div></div><div><span className="field-hint">الكمية</span><div className="item-primary">{fmt(voucher.quantity)}</div></div><div><span className="field-hint">المشروع / المورد</span><div>{voucher.projectName || voucher.supplier || '—'}</div></div><div><span className="field-hint">التاريخ</span><div>{fmtDate(voucher.occurredOn)}</div></div><div><span className="field-hint">المستلم</span><div>{voucher.recipient || '—'}</div></div><div><span className="field-hint">المستخدم</span><div>{voucher.actorName || '—'}</div></div></div><div className="form-actions no-print"><Button kind="btn-primary" onClick={() => window.print()} testId="button-print-voucher"><Printer size={15} /> طباعة السند</Button><Button onClick={() => setVoucher(null)} testId="button-close-voucher">إغلاق</Button></div></Modal>}
   </div>;
 }
 
-function csvCell(value: string | number) { return `"${String(value).replaceAll('"', '""')}"`; }
+function downloadXlsx(
+  fileName: string,
+  sheetName: string,
+  rows: Array<Record<string, string | number>>,
+) {
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.json_to_sheet(
+    rows.length ? rows : [{ الحالة: 'لا توجد بيانات' }],
+  );
+  worksheet['!cols'] = Object.keys(rows[0] ?? { الحالة: '' }).map(() => ({
+    wch: 20,
+  }));
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+  XLSX.writeFile(workbook, fileName);
+}
 
 function ProjectsPage() {
   const [filter, setFilter] = useState(''); const [showCreate, setShowCreate] = useState(false);
@@ -426,13 +576,27 @@ function ProjectsPage() {
   const { data: user } = useGetCurrentUser(); const canWrite = user?.role === 'admin' || user?.role === 'warehouse_manager';
   return <div data-testid="page-projects"><PageTitle title="المشاريع" description="المشاريع النشطة والوجهات المرتبطة بصرف المواد." >{canWrite && <Button kind="btn-primary" onClick={() => setShowCreate(true)} testId="button-create-project"><Plus size={15} /> مشروع جديد</Button>}</PageTitle>
     <div className="filters"><select className="select-field" value={filter} onChange={e => setFilter(e.target.value)} data-testid="select-project-status"><option value="">كل المشاريع</option><option value="active">نشط</option><option value="completed">مكتمل</option></select><span className="live-badge"><BriefcaseBusiness size={13} /> {fmt(projects.length)} مشروع</span></div>
-    {isLoading ? <div className="metric-grid">{[0,1,2].map(i => <div className="panel skeleton skeleton-card" key={i} />)}</div> : isError ? <ErrorState onRetry={() => { void refetch(); }} /> : projects.length ? <div style={{ display: 'grid', gap: 11 }}>{projects.map(p => <ProjectRow project={p} key={p.id} />)}</div> : <section className="panel"><Empty icon={Building2} title="لا توجد مشاريع بعد" detail="أضف مشروعاً لربط حركات الصرف بمواقع التنفيذ." action={canWrite && <Button kind="btn-primary" onClick={() => setShowCreate(true)} testId="button-empty-create-project"><Plus size={14} /> إضافة مشروع</Button>} /></section>}
+    {isLoading ? <div className="metric-grid">{[0,1,2].map(i => <div className="panel skeleton skeleton-card" key={i} />)}</div> : isError ? <ErrorState onRetry={() => { void refetch(); }} /> : projects.length ? <div style={{ display: 'grid', gap: 11 }}>{projects.map(p => <ProjectRow project={p} canWrite={canWrite} key={p.id} />)}</div> : <section className="panel"><Empty icon={Building2} title="لا توجد مشاريع بعد" detail="أضف مشروعاً لربط حركات الصرف بمواقع التنفيذ." action={canWrite && <Button kind="btn-primary" onClick={() => setShowCreate(true)} testId="button-empty-create-project"><Plus size={14} /> إضافة مشروع</Button>} /></section>}
     {showCreate && <ProjectForm onClose={() => setShowCreate(false)} />}
   </div>;
 }
 
-function ProjectRow({ project }: { project: Project }) {
-  return <article className="panel panel-pad" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }} data-testid={`card-project-${project.id}`}><div style={{ display: 'flex', alignItems: 'center', gap: 13 }}><div className="item-symbol" style={{ width: 42, height: 42 }}><Building2 size={18} /></div><div><div className="item-primary" style={{ fontSize: 13 }}>{project.name}</div><div className="item-secondary">{project.location || 'الموقع غير محدد'} · أُضيف {fmtDate(project.createdAt)}</div></div></div><span className={`status-pill ${project.status === 'completed' ? 'neutral' : ''}`} data-testid={`status-project-${project.id}`}>{project.status === 'active' ? 'نشط' : 'مكتمل'}</span></article>;
+function ProjectRow({ project, canWrite }: { project: Project; canWrite: boolean }) {
+  const qc = useQueryClient();
+  const update = useUpdateProject();
+  const nextStatus = project.status === 'active' ? 'completed' : 'active';
+  function toggleStatus() {
+    update.mutate(
+      { id: project.id, data: { status: nextStatus } },
+      {
+        onSuccess: async () => {
+          await qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
+          await qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+        },
+      },
+    );
+  }
+  return <article className="panel panel-pad" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }} data-testid={`card-project-${project.id}`}><div style={{ display: 'flex', alignItems: 'center', gap: 13 }}><div className="item-symbol" style={{ width: 42, height: 42 }}><Building2 size={18} /></div><div><div className="item-primary" style={{ fontSize: 13 }}>{project.name}</div><div className="item-secondary">{project.location || 'الموقع غير محدد'} · أُضيف {fmtDate(project.createdAt)}</div></div></div><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span className={`status-pill ${project.status === 'completed' ? 'neutral' : ''}`} data-testid={`status-project-${project.id}`}>{project.status === 'active' ? 'نشط' : 'مكتمل'}</span>{canWrite && <Button disabled={update.isPending} onClick={toggleStatus} testId={`button-toggle-project-${project.id}`}>{project.status === 'active' ? 'إكمال' : 'إعادة فتح'}</Button>}</div></article>;
 }
 
 function ProjectForm({ onClose }: { onClose: () => void }) {
@@ -461,7 +625,7 @@ function ProtectedWorkspace() {
   return <Shell user={user || (clerkUser ? { id: clerkUser.id, name: clerkUser.fullName || clerkUser.firstName || 'مستخدم نمري', email: clerkUser.primaryEmailAddress?.emailAddress || '', role: 'viewer', createdAt: '' } : undefined)}>
     {isLoading ? <div className="panel panel-pad"><div className="skeleton" style={{ height: 30, width: '40%' }} /><div className="skeleton" style={{ height: 180, marginTop: 20 }} /></div> :
     isError ? <><PageTitle title="تعذر التحقق من الصلاحيات" description="تعذر جلب ملف المستخدم من مساحة العمل." /><ErrorState onRetry={() => { void refetch(); }} /></> :
-    path === '/dashboard' ? <DashboardPage /> : path === '/inventory' ? <InventoryPage /> : path === '/transactions/new' ? <TransactionPage /> : path === '/history' ? <HistoryPage /> : path === '/reports' ? <ReportsPage /> : path === '/projects' ? <ProjectsPage /> : path === '/users' ? <UsersPage /> : <NotFoundPage />}
+    path === '/dashboard' ? <DashboardPage /> : path === '/inventory' ? <InventoryPage /> : path === '/transactions/new' ? <TransactionPage /> : path === '/history' ? <HistoryPage /> : path === '/reports' ? <ReportsPage /> : path === '/approvals' ? <ApprovalsPage /> : path === '/projects' ? <ProjectsPage /> : path === '/users' ? <UsersPage /> : <NotFoundPage />}
   </Shell>;
 }
 
@@ -476,6 +640,7 @@ function Router() {
     <Route path="/transactions/new" component={ProtectedWorkspace} />
     <Route path="/history" component={ProtectedWorkspace} />
     <Route path="/reports" component={ProtectedWorkspace} />
+    <Route path="/approvals" component={ProtectedWorkspace} />
     <Route path="/projects" component={ProtectedWorkspace} />
     <Route path="/users" component={ProtectedWorkspace} />
     <Route component={NotFoundPage} />

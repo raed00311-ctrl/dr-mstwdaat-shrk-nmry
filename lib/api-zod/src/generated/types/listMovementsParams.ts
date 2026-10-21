@@ -5,6 +5,7 @@
  * API for Namri construction warehouse and inventory management
  * OpenAPI spec version: 0.1.0
  */
+import type { ListMovementsApprovalStatus } from './listMovementsApprovalStatus';
 import type { ListMovementsType } from './listMovementsType';
 
 export type ListMovementsParams = {
@@ -12,6 +13,7 @@ q?: string;
 type?: ListMovementsType;
 warehouseId?: number;
 projectId?: number;
+approvalStatus?: ListMovementsApprovalStatus;
 /**
  * @minimum 1
  * @maximum 1000

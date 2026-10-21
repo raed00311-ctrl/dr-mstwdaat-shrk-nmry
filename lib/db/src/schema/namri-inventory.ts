@@ -25,6 +25,11 @@ export const movementTypeEnum = pgEnum("inventory_movement_type", [
   "adjustment",
 ]);
 
+export const movementApprovalStatusEnum = pgEnum(
+  "inventory_movement_approval_status",
+  ["pending", "approved", "rejected"],
+);
+
 export const projectStatusEnum = pgEnum("project_status", [
   "active",
   "completed",
@@ -125,6 +130,9 @@ export const inventoryMovementsTable = pgTable(
       .notNull()
       .references(() => warehousesTable.id),
     type: movementTypeEnum("type").notNull(),
+    approvalStatus: movementApprovalStatusEnum("approval_status")
+      .notNull()
+      .default("approved"),
     quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" })
       .notNull(),
     unitCost: numeric("unit_cost", { precision: 14, scale: 4, mode: "number" })
@@ -144,6 +152,9 @@ export const inventoryMovementsTable = pgTable(
     actorId: text("actor_id")
       .notNull()
       .references(() => appUsersTable.id),
+    approvedBy: text("approved_by").references(() => appUsersTable.id),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    approvalNotes: text("approval_notes"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

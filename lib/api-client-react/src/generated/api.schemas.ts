@@ -42,6 +42,13 @@ export interface Warehouse {
   isDefault: boolean;
 }
 
+export interface WarehouseInput {
+  /** @minLength 1 */
+  name: string;
+  /** @minLength 1 */
+  location: string;
+}
+
 export interface WarehouseStock {
   warehouseId: number;
   warehouseName: string;
@@ -140,6 +147,15 @@ export const MovementType = {
   adjustment: 'adjustment',
 } as const;
 
+export type MovementApprovalStatus = typeof MovementApprovalStatus[keyof typeof MovementApprovalStatus];
+
+
+export const MovementApprovalStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
 export interface Movement {
   id: number;
   itemId: number;
@@ -148,9 +164,16 @@ export interface Movement {
   warehouseId: number;
   warehouseName: string;
   type: MovementType;
+  approvalStatus: MovementApprovalStatus;
   quantity: number;
   unitCost: number;
   totalValue: number;
+  /** @nullable */
+  approvedAt: string | null;
+  /** @nullable */
+  approverName: string | null;
+  /** @nullable */
+  approvalNotes: string | null;
   /** @nullable */
   supplier: string | null;
   /** @nullable */
@@ -190,6 +213,19 @@ export interface MovementInput {
   recipient?: string;
   notes?: string;
   occurredOn: string;
+}
+
+export type MovementApprovalInputDecision = typeof MovementApprovalInputDecision[keyof typeof MovementApprovalInputDecision];
+
+
+export const MovementApprovalInputDecision = {
+  approve: 'approve',
+  reject: 'reject',
+} as const;
+
+export interface MovementApprovalInput {
+  decision: MovementApprovalInputDecision;
+  notes?: string;
 }
 
 export interface StockCountInput {
@@ -309,6 +345,7 @@ q?: string;
 type?: ListMovementsType;
 warehouseId?: number;
 projectId?: number;
+approvalStatus?: ListMovementsApprovalStatus;
 /**
  * @minimum 1
  * @maximum 1000
@@ -323,6 +360,15 @@ export const ListMovementsType = {
   in: 'in',
   out: 'out',
   adjustment: 'adjustment',
+} as const;
+
+export type ListMovementsApprovalStatus = typeof ListMovementsApprovalStatus[keyof typeof ListMovementsApprovalStatus];
+
+
+export const ListMovementsApprovalStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  rejected: 'rejected',
 } as const;
 
 export type GetInventoryReportParams = {

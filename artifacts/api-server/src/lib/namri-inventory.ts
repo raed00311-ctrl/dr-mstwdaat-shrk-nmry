@@ -7,6 +7,7 @@ import {
   or,
   type SQL,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   db,
   appUsersTable,
@@ -16,6 +17,8 @@ import {
   projectsTable,
   warehousesTable,
 } from "@workspace/db";
+
+const approvalUsersTable = alias(appUsersTable, "approval_user");
 
 export async function ensureDefaultWarehouses() {
   await db
@@ -134,7 +137,8 @@ export type MovementFilters = {
   type?: "in" | "out" | "adjustment";
   warehouseId?: number;
   projectId?: number;
-  limit?: number;
+  approvalStatus?: "pending" | "approved" | "rejected";
+  limit?: number | null;
 };
 
 export async function listInventoryMovements(filters: MovementFilters = {}) {
@@ -147,6 +151,11 @@ export async function listInventoryMovements(filters: MovementFilters = {}) {
   }
   if (filters.projectId) {
     conditions.push(eq(inventoryMovementsTable.projectId, filters.projectId));
+  }
+  if (filters.approvalStatus) {
+    conditions.push(
+      eq(inventoryMovementsTable.approvalStatus, filters.approvalStatus),
+    );
   }
   if (filters.q?.trim()) {
     const query = `%${filters.q.trim()}%`;
@@ -162,7 +171,7 @@ export async function listInventoryMovements(filters: MovementFilters = {}) {
     );
   }
 
-  return db
+  const query = db
     .select({
       id: inventoryMovementsTable.id,
       itemId: inventoryMovementsTable.itemId,
@@ -171,9 +180,13 @@ export async function listInventoryMovements(filters: MovementFilters = {}) {
       warehouseId: inventoryMovementsTable.warehouseId,
       warehouseName: warehousesTable.name,
       type: inventoryMovementsTable.type,
+      approvalStatus: inventoryMovementsTable.approvalStatus,
       quantity: inventoryMovementsTable.quantity,
       unitCost: inventoryMovementsTable.unitCost,
       totalValue: inventoryMovementsTable.totalValue,
+      approvedAt: inventoryMovementsTable.approvedAt,
+      approverName: approvalUsersTable.name,
+      approvalNotes: inventoryMovementsTable.approvalNotes,
       supplier: inventoryMovementsTable.supplier,
       invoiceNumber: inventoryMovementsTable.invoiceNumber,
       projectId: inventoryMovementsTable.projectId,
@@ -194,10 +207,66 @@ export async function listInventoryMovements(filters: MovementFilters = {}) {
       projectsTable,
       eq(projectsTable.id, inventoryMovementsTable.projectId),
     )
+    .leftJoin(
+      approvalUsersTable,
+      eq(approvalUsersTable.id, inventoryMovementsTable.approvedBy),
+    )
     .innerJoin(appUsersTable, eq(appUsersTable.id, inventoryMovementsTable.actorId))
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(inventoryMovementsTable.occurredOn), desc(inventoryMovementsTable.id))
-    .limit(filters.limit ?? 100);
+    .orderBy(
+      desc(inventoryMovementsTable.occurredOn),
+      desc(inventoryMovementsTable.id),
+    );
+  return filters.limit === null
+    ? query
+    : query.limit(filters.limit ?? 100);
+}
+
+export async function getInventoryMovementById(id: number) {
+  const [movement] = await db
+    .select({
+      id: inventoryMovementsTable.id,
+      itemId: inventoryMovementsTable.itemId,
+      itemCode: itemsTable.code,
+      itemName: itemsTable.name,
+      warehouseId: inventoryMovementsTable.warehouseId,
+      warehouseName: warehousesTable.name,
+      type: inventoryMovementsTable.type,
+      approvalStatus: inventoryMovementsTable.approvalStatus,
+      quantity: inventoryMovementsTable.quantity,
+      unitCost: inventoryMovementsTable.unitCost,
+      totalValue: inventoryMovementsTable.totalValue,
+      approvedAt: inventoryMovementsTable.approvedAt,
+      approverName: approvalUsersTable.name,
+      approvalNotes: inventoryMovementsTable.approvalNotes,
+      supplier: inventoryMovementsTable.supplier,
+      invoiceNumber: inventoryMovementsTable.invoiceNumber,
+      projectId: inventoryMovementsTable.projectId,
+      projectName: projectsTable.name,
+      recipient: inventoryMovementsTable.recipient,
+      notes: inventoryMovementsTable.notes,
+      occurredOn: inventoryMovementsTable.occurredOn,
+      actorName: appUsersTable.name,
+      createdAt: inventoryMovementsTable.createdAt,
+    })
+    .from(inventoryMovementsTable)
+    .innerJoin(itemsTable, eq(itemsTable.id, inventoryMovementsTable.itemId))
+    .innerJoin(
+      warehousesTable,
+      eq(warehousesTable.id, inventoryMovementsTable.warehouseId),
+    )
+    .leftJoin(
+      projectsTable,
+      eq(projectsTable.id, inventoryMovementsTable.projectId),
+    )
+    .leftJoin(
+      approvalUsersTable,
+      eq(approvalUsersTable.id, inventoryMovementsTable.approvedBy),
+    )
+    .innerJoin(appUsersTable, eq(appUsersTable.id, inventoryMovementsTable.actorId))
+    .where(eq(inventoryMovementsTable.id, id))
+    .limit(1);
+  return movement;
 }
 
 export async function listActiveProjects() {
@@ -224,5 +293,10 @@ export async function getMonthlyMovements(since: string) {
       occurredOn: inventoryMovementsTable.occurredOn,
     })
     .from(inventoryMovementsTable)
-    .where(gte(inventoryMovementsTable.occurredOn, since));
+    .where(
+      and(
+        gte(inventoryMovementsTable.occurredOn, since),
+        eq(inventoryMovementsTable.approvalStatus, "approved"),
+      ),
+    );
 }

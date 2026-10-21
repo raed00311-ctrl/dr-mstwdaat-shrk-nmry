@@ -62,9 +62,13 @@ export const GetDashboardResponse = zod.object({
   "warehouseId": zod.number().int(),
   "warehouseName": zod.string(),
   "type": zod.enum(['in', 'out', 'adjustment']),
+  "approvalStatus": zod.enum(['pending', 'approved', 'rejected']),
   "quantity": zod.number(),
   "unitCost": zod.number(),
   "totalValue": zod.number(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "approverName": zod.string().nullable(),
+  "approvalNotes": zod.string().nullable(),
   "supplier": zod.string().nullable(),
   "invoiceNumber": zod.string().nullable(),
   "projectId": zod.number().int().nullable(),
@@ -88,6 +92,26 @@ export const ListWarehousesResponseItem = zod.object({
   "isDefault": zod.boolean()
 })
 export const ListWarehousesResponse = zod.array(ListWarehousesResponseItem)
+
+
+/**
+ * @summary Create a warehouse
+ */
+
+
+
+
+export const CreateWarehouseBody = zod.object({
+  "name": zod.string().min(1),
+  "location": zod.string().min(1)
+})
+
+export const CreateWarehouseResponse = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "location": zod.string().nullable(),
+  "isDefault": zod.boolean()
+})
 
 
 /**
@@ -281,6 +305,7 @@ export const ListMovementsQueryParams = zod.object({
   "type": zod.enum(['in', 'out', 'adjustment']).optional(),
   "warehouseId": zod.coerce.number().int().optional(),
   "projectId": zod.coerce.number().int().optional(),
+  "approvalStatus": zod.enum(['pending', 'approved', 'rejected']).optional(),
   "limit": zod.coerce.number().int().min(1).max(listMovementsQueryLimitMax).default(listMovementsQueryLimitDefault)
 })
 
@@ -292,9 +317,13 @@ export const ListMovementsResponseItem = zod.object({
   "warehouseId": zod.number().int(),
   "warehouseName": zod.string(),
   "type": zod.enum(['in', 'out', 'adjustment']),
+  "approvalStatus": zod.enum(['pending', 'approved', 'rejected']),
   "quantity": zod.number(),
   "unitCost": zod.number(),
   "totalValue": zod.number(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "approverName": zod.string().nullable(),
+  "approvalNotes": zod.string().nullable(),
   "supplier": zod.string().nullable(),
   "invoiceNumber": zod.string().nullable(),
   "projectId": zod.number().int().nullable(),
@@ -309,7 +338,7 @@ export const ListMovementsResponse = zod.array(ListMovementsResponseItem)
 
 
 /**
- * @summary Record a stock receipt or issue
+ * @summary Submit a stock receipt or issue for approval
  */
 export const createMovementBodyQuantityExclusiveMin = 0;
 
@@ -339,9 +368,52 @@ export const CreateMovementResponse = zod.object({
   "warehouseId": zod.number().int(),
   "warehouseName": zod.string(),
   "type": zod.enum(['in', 'out', 'adjustment']),
+  "approvalStatus": zod.enum(['pending', 'approved', 'rejected']),
   "quantity": zod.number(),
   "unitCost": zod.number(),
   "totalValue": zod.number(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "approverName": zod.string().nullable(),
+  "approvalNotes": zod.string().nullable(),
+  "supplier": zod.string().nullable(),
+  "invoiceNumber": zod.string().nullable(),
+  "projectId": zod.number().int().nullable(),
+  "projectName": zod.string().nullable(),
+  "recipient": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "occurredOn": zod.coerce.date(),
+  "actorName": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Approve or reject a pending stock movement
+ */
+export const UpdateMovementApprovalParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const UpdateMovementApprovalBody = zod.object({
+  "decision": zod.enum(['approve', 'reject']),
+  "notes": zod.string().optional()
+})
+
+export const UpdateMovementApprovalResponse = zod.object({
+  "id": zod.number().int(),
+  "itemId": zod.number().int(),
+  "itemCode": zod.string(),
+  "itemName": zod.string(),
+  "warehouseId": zod.number().int(),
+  "warehouseName": zod.string(),
+  "type": zod.enum(['in', 'out', 'adjustment']),
+  "approvalStatus": zod.enum(['pending', 'approved', 'rejected']),
+  "quantity": zod.number(),
+  "unitCost": zod.number(),
+  "totalValue": zod.number(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "approverName": zod.string().nullable(),
+  "approvalNotes": zod.string().nullable(),
   "supplier": zod.string().nullable(),
   "invoiceNumber": zod.string().nullable(),
   "projectId": zod.number().int().nullable(),
@@ -377,9 +449,13 @@ export const RecordStockCountResponse = zod.object({
   "warehouseId": zod.number().int(),
   "warehouseName": zod.string(),
   "type": zod.enum(['in', 'out', 'adjustment']),
+  "approvalStatus": zod.enum(['pending', 'approved', 'rejected']),
   "quantity": zod.number(),
   "unitCost": zod.number(),
   "totalValue": zod.number(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "approverName": zod.string().nullable(),
+  "approvalNotes": zod.string().nullable(),
   "supplier": zod.string().nullable(),
   "invoiceNumber": zod.string().nullable(),
   "projectId": zod.number().int().nullable(),
@@ -429,9 +505,13 @@ export const GetMovementReportResponseItem = zod.object({
   "warehouseId": zod.number().int(),
   "warehouseName": zod.string(),
   "type": zod.enum(['in', 'out', 'adjustment']),
+  "approvalStatus": zod.enum(['pending', 'approved', 'rejected']),
   "quantity": zod.number(),
   "unitCost": zod.number(),
   "totalValue": zod.number(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "approverName": zod.string().nullable(),
+  "approvalNotes": zod.string().nullable(),
   "supplier": zod.string().nullable(),
   "invoiceNumber": zod.string().nullable(),
   "projectId": zod.number().int().nullable(),

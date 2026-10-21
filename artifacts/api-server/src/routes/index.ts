@@ -7,6 +7,7 @@ import projectsRouter from "./projects";
 import movementsRouter from "./movements";
 import usersRouter from "./users";
 import backupRouter from "./backup";
+import reportsRouter from "./reports";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(projectsRouter);
 router.use(movementsRouter);
 router.use(usersRouter);
 router.use(backupRouter);
+router.use(reportsRouter);
 
 export default router;
