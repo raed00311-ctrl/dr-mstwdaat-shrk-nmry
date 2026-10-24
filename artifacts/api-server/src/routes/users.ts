@@ -18,17 +18,13 @@ router.get("/users/me", (req, res): void => {
   res.json(GetCurrentUserResponse.parse(getAppUser(req)));
 });
 
-router.get(
-  "/users",
-  requireRole("admin"),
-  async (_req, res): Promise<void> => {
-    const users = await db
-      .select()
-      .from(appUsersTable)
-      .orderBy(appUsersTable.createdAt);
-    res.json(ListUsersResponse.parse(users));
-  },
-);
+router.get("/users", requireRole("admin"), async (_req, res): Promise<void> => {
+  const users = await db
+    .select()
+    .from(appUsersTable)
+    .orderBy(appUsersTable.createdAt);
+  res.json(ListUsersResponse.parse(users));
+});
 
 router.patch(
   "/users/:id/role",
