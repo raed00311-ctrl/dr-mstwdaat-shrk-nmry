@@ -1,7 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
   "include": ["src/**/*", "mockupPreviewPlugin.ts", "vite.config.ts"],
-  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
+  "exclude": [
+    "node_modules",
+    "build",
+    "dist",
+    "**/*.test.ts",
+    "src/components/mockups/templates"
+  ],
   "compilerOptions": {
     "incremental": true,
     "tsBuildInfoFile": ".tsbuildinfo",
